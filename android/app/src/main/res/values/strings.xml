@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AI·FEWS</string>
+    <string name="title_activity_main">AI·FEWS Environmental Intelligence</string>
+    <string name="package_name">com.ganavi.aifews</string>
+    <string name="custom_url_scheme">com.ganavi.aifews</string>
+</resources>

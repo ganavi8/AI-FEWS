@@ -1,0 +1,24 @@
+{
+  "routes": [
+    { "path": "/", "title": "Dashboard · AI·FEWS Environmental Intelligence" },
+    { "path": "/dashboard", "title": "Dashboard · AI·FEWS Environmental Intelligence" },
+    { "path": "/location", "title": "Location · AI·FEWS Environmental Intelligence" },
+    { "path": "/environment", "title": "Environment · AI·FEWS Environmental Intelligence" },
+    { "path": "/risk", "title": "Risk Assessment · AI·FEWS Environmental Intelligence" },
+    { "path": "/alerts", "title": "Alerts · AI·FEWS Environmental Intelligence" },
+    { "path": "/map", "title": "Map · AI·FEWS Environmental Intelligence" },
+    { "path": "/community", "title": "Community Reports · AI·FEWS Environmental Intelligence" },
+    { "path": "/trends", "title": "Trends · AI·FEWS Environmental Intelligence" },
+    { "path": "/data-quality", "title": "Data Quality · AI·FEWS Environmental Intelligence" },
+    { "path": "/sources", "title": "Sources · AI·FEWS Environmental Intelligence" },
+    { "path": "/preparedness", "title": "Preparedness · AI·FEWS Environmental Intelligence" },
+    { "path": "/emergency", "title": "Emergency Guidance · AI·FEWS Environmental Intelligence" },
+    { "path": "/simulation", "title": "Simulation · AI·FEWS Environmental Intelligence" },
+    { "path": "/saved", "title": "Saved Locations · AI·FEWS Environmental Intelligence" },
+    { "path": "/notifications", "title": "Notifications · AI·FEWS Environmental Intelligence" },
+    { "path": "/settings", "title": "Settings · AI·FEWS Environmental Intelligence" },
+    { "path": "/privacy", "title": "Privacy Center · AI·FEWS Environmental Intelligence" },
+    { "path": "/privacy-policy", "title": "Privacy Policy · AI·FEWS Environmental Intelligence" },
+    { "path": "/about", "title": "About · AI·FEWS Environmental Intelligence" }
+  ]
+}

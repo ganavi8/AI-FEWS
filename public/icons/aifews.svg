@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="AI·FEWS location and water mark">
+  <rect width="512" height="512" fill="#071321"/>
+  <path d="M256 52c-85 0-154 69-154 154 0 105 154 254 154 254s154-149 154-254c0-85-69-154-154-154Z" fill="#37d4cf"/>
+  <circle cx="256" cy="205" r="78" fill="#091b29"/>
+  <path d="M198 194c19-16 40-16 59 0s40 16 59 0v27c-19 16-40 16-59 0s-40-16-59 0v-27Z" fill="#d5fff6"/>
+</svg>

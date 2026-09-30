@@ -1,0 +1,17 @@
+.git
+.github
+node_modules
+**/node_modules
+dist
+coverage
+.env
+.env.*
+!.env.example
+*.log
+*.keystore
+*.jks
+*.p12
+*.pem
+*.key
+android/.gradle
+android/local.properties

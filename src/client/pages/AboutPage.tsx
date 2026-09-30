@@ -1,0 +1,17 @@
+import { ArrowUpRight, Compass, Database, ShieldAlert } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { PageIntro, Panel } from '../app/components.js';
+
+export function AboutPage() {
+  return <>
+    <PageIntro eyebrow="AI·FEWS / PRODUCT" title="Environmental intelligence" description="A location-aware environmental information and preparedness interface with explicit source provenance and clear limits." />
+    <div className="dashboard-grid">
+      <Panel title="What this product does" eyebrow="PURPOSE"><ul className="rule-list"><li><Compass size={15} />Requests real provider weather and air-quality data only after you select a place.</li><li><ShieldAlert size={15} />Shows a server-side rainfall screening heuristic and source inputs without presenting a flood probability or official alert.</li><li><Database size={15} />Supports opt-in saved places, actual assessment history and community-generated report sync.</li><li><Database size={15} />Provides an installable offline shell, local preparedness content and clearly timestamped local snapshots where storage is available.</li></ul></Panel>
+      <Panel title="What it is not" eyebrow="LIMITS"><ul className="rule-list"><li>A validated flood forecast, calibrated probability model, local sensor network or official warning system.</li><li>A replacement for local forecasts, evacuation orders, emergency agencies or disaster-response professionals.</li><li>A continuous location tracker or background monitoring system.</li><li>A guarantee of provider uptime, complete geographic coverage, cross-device sync, instant messaging or notification delivery while the app is closed.</li></ul></Panel>
+    </div>
+    <Panel title="Provider sources" eyebrow="ATTRIBUTION" className="about-sources"><div className="source-card-list"><a className="source-card-link" href="https://open-meteo.com/en/docs" target="_blank" rel="noreferrer"><strong>Open-Meteo Forecast</strong><span>Current weather and hourly forecast <ArrowUpRight size={12} /></span></a><a className="source-card-link" href="https://open-meteo.com/en/docs/air-quality-api" target="_blank" rel="noreferrer"><strong>Open-Meteo Air Quality</strong><span>Air-quality model values <ArrowUpRight size={12} /></span></a><a className="source-card-link" href="https://nominatim.org/release-docs/latest/api/Reverse/" target="_blank" rel="noreferrer"><strong>OpenStreetMap Nominatim</strong><span>Explicit reverse geocoding <ArrowUpRight size={12} /></span></a><a className="source-card-link" href="https://operations.osmfoundation.org/policies/tiles/" target="_blank" rel="noreferrer"><strong>OpenStreetMap contributors</strong><span>Visible basemap tiles and tile policy <ArrowUpRight size={12} /></span></a></div>
+      <p className="panel-note" style={{ marginTop: 14 }}>Map data © OpenStreetMap contributors. Air-quality forecast output is not a local regulatory monitor. See <Link to="/data-quality">Data Quality & Sources</Link> for current runtime status.</p>
+    </Panel>
+    <Panel title="Product owner and privacy" eyebrow="ACCOUNT & CONTACT"><p className="panel-note">Saved data is scoped to an anonymous browser/app installation key. There is no account recovery or automatic transfer to another device. The active deployment owner must supply a support contact and publish an accurate privacy and retention policy before production use.</p><Link className="button button-secondary button-compact" to="/privacy">Review Privacy Center</Link></Panel>
+  </>;
+}

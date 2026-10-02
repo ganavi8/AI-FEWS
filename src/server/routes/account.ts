@@ -1,6 +1,6 @@
-import { Router } from 'express';
+﻿import { Router } from 'express';
 import { z } from 'zod';
-import { NotificationPreferencesSchema, SavedLocationInputSchema } from '../../shared/contracts.js';
+import { NotificationInstallationSchema, NotificationPreferencesSchema, SavedLocationInputSchema } from '../../shared/contracts.js';
 import { ApiError } from '../errors.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import type { RouteContext } from './context.js';
@@ -58,25 +58,93 @@ export function accountRouter(context: RouteContext): Router {
     });
   });
 
+  const repo = context.repository as typeof context.repository & {
+    listActiveAlerts?: (ownerHash: string, limit?: number) => Promise<any[]>;
+    listAlertHistory?: (ownerHash: string, limit?: number) => Promise<any[]>;
+    listAlerts?: (ownerHash: string, limit: number) => Promise<any[]>;
+    acknowledgeAlert?: (ownerHash: string, alertId: string) => Promise<any | null>;
+  };
+
   router.get('/alerts', async (request, response) => {
     const ownerHash = requireOwnerHash(request);
-    response.json({ alerts: await context.repository.listAlerts(ownerHash, 100) });
+    const alerts = repo.listActiveAlerts ? await repo.listActiveAlerts(ownerHash, 100) : await repo.listAlerts?.(ownerHash, 100) ?? [];
+    response.json({ alerts });
   });
 
+  router.get('/alerts/history', async (request, response) => {
+    const ownerHash = requireOwnerHash(request);
+    const alerts = repo.listAlertHistory ? await repo.listAlertHistory(ownerHash, 200) : await repo.listAlerts?.(ownerHash, 200) ?? [];
+    response.json({ alerts });
+  });
+
+  router.patch('/alerts/:alertId/acknowledge', async (request, response) => {
+    const ownerHash = requireOwnerHash(request);
+    const parsedAlertId = z.string().uuid().safeParse(request.params.alertId);
+    if (!parsedAlertId.success) throw new ApiError(400, 'INVALID_ALERT_ID', 'Provide a valid alert ID.');
+    if (!repo.acknowledgeAlert) throw new ApiError(501, 'ACKNOWLEDGE_NOT_SUPPORTED', 'Alert acknowledgement is not enabled for this repository.');
+    const updated = await repo.acknowledgeAlert(ownerHash, parsedAlertId.data);
+    if (!updated) throw new ApiError(404, 'ALERT_NOT_FOUND', 'This alert is not available for this installation.');
+    response.json(updated);
+  });
+
+  router.post('/notifications/installations', writeLimit, async (request, response) => {
+    const parsed = NotificationInstallationSchema.safeParse(request.body);
+    if (!parsed.success) {
+      throw new ApiError(400, 'INVALID_NOTIFICATION_INSTALLATION', 'Provide a valid installation ID, platform, and optional push token.');
+    }
+
+    const ownerHash = requireOwnerHash(request);
+    try {
+      await context.repository.registerNotificationInstallation(
+        ownerHash,
+        parsed.data.installationId,
+        parsed.data.platform,
+        parsed.data.pushToken ?? null,
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === 'NOTIFICATION_INSTALLATION_OWNER_MISMATCH') {
+        throw new ApiError(409, 'INSTALLATION_OWNER_CONFLICT', 'This notification installation belongs to another owner.');
+      }
+      throw error;
+    }
+
+    response.json({ registered: true });
+  });
+
+  router.delete('/notifications/installations/:installationId', writeLimit, async (request, response) => {
+    const installationId = z.string().trim().min(1).max(96).safeParse(request.params.installationId);
+    if (!installationId.success) {
+      throw new ApiError(400, 'INVALID_INSTALLATION_ID', 'Provide a valid installation ID.');
+    }
+
+    const removed = await context.repository.unregisterNotificationInstallation(
+      requireOwnerHash(request),
+      installationId.data,
+    );
+
+    if (!removed) {
+      throw new ApiError(404, 'INSTALLATION_NOT_FOUND', 'This notification installation is not available.');
+    }
+
+    response.json({ removed: true });
+  });
   router.get('/notifications', async (request, response) => {
     const ownerHash = requireOwnerHash(request);
-    const [alerts, preferences] = await Promise.all([
-      context.repository.listAlerts(ownerHash, 100), context.repository.getNotificationPreferences(ownerHash),
-    ]);
+    const alerts = repo.listActiveAlerts ? await repo.listActiveAlerts(ownerHash, 100) : await repo.listAlerts?.(ownerHash, 100) ?? [];
+    const preferences = await context.repository.getNotificationPreferences(ownerHash);
     response.json({ alerts, preferences, delivery: 'IN_APP_ON_REFRESH', pushConfigured: false });
   });
 
   router.put('/notifications/preferences', writeLimit, async (request, response) => {
     const parsed = NotificationPreferencesSchema.safeParse(request.body);
-    if (!parsed.success) throw new ApiError(400, 'INVALID_NOTIFICATION_PREFERENCES', 'All four notification preferences must be booleans.');
+    if (!parsed.success) throw new ApiError(400, 'INVALID_NOTIFICATION_PREFERENCES', 'All notification preferences must be booleans.');
     const preferences = await context.repository.setNotificationPreferences(requireOwnerHash(request), parsed.data);
     response.json({ preferences, delivery: 'IN_APP_ON_REFRESH', pushConfigured: false });
   });
 
   return router;
 }
+
+
+
+

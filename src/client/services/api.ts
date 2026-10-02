@@ -1,13 +1,13 @@
-import { Capacitor } from '@capacitor/core';
+﻿import { Capacitor } from '@capacitor/core';
 import { z } from 'zod';
 import {
   AlertsResponseSchema, AirQualityDataSchema, CommunityReportSchema, CommunityReportsResponseSchema, DataQualityResponseSchema,
   EnvironmentResponseSchema, GeocodeResponseSchema, HealthResponseSchema, ModelsResponseSchema, NotificationPreferencesSchema,
-  NotificationsResponseSchema, ProviderCatalogResponseSchema, ReportInputSchema, RiskAssessmentSchema,
+  NotificationsResponseSchema, NotificationInstallationSchema, ProviderCatalogResponseSchema, ReportInputSchema, RiskAssessmentSchema,
   PublicConfigResponseSchema, RiskExplanationResponseSchema, SavedLocationInputSchema, SavedLocationResponseSchema,
   SavedLocationsResponseSchema, SimulationResponseSchema, SyncResponseSchema, TrendsResponseSchema,
   WeatherDataSchema,
-  type NotificationPreferences, type ReportInput, type SavedLocationInput,
+  type NotificationInstallation, type NotificationPreferences, type ReportInput, type SavedLocationInput,
 } from '../../shared/contracts.js';
 
 const API_BASE_STORAGE_KEY = 'aifews.apiBase';
@@ -153,6 +153,10 @@ export const api = {
   deleteLocation: (id: string) => request('DELETE', `/api/saved-locations/${encodeURIComponent(id)}`, z.object({ id: z.string(), deleted: z.literal(true) })),
   alerts: () => get('/api/alerts', AlertsResponseSchema),
   notifications: () => get('/api/notifications', NotificationsResponseSchema),
+  registerNotificationInstallation: (value: NotificationInstallation) =>
+    post('/api/notifications/installations', NotificationInstallationSchema.parse(value), z.object({}).passthrough()),
+  unregisterNotificationInstallation: (installationId: string) =>
+    request('DELETE', `/api/notifications/installations/`, z.object({}).passthrough()),
   setNotificationPreferences: (value: NotificationPreferences) => put('/api/notifications/preferences', NotificationPreferencesSchema.parse(value), z.object({ preferences: NotificationPreferencesSchema, delivery: z.literal('IN_APP_ON_REFRESH'), pushConfigured: z.boolean() })),
   communityReports: (latitude: number, longitude: number, radiusKm = 10) => get(`/api/community-reports?${qs({ latitude, longitude, radiusKm })}`, CommunityReportsResponseSchema),
   syncReports: (reports: ReportInput[]) => post('/api/sync', { reports }, SyncResponseSchema),
@@ -171,3 +175,6 @@ export function validateLocalReport(value: unknown): ReportInput {
   if (!parsed.success) throw new ApiClientError('INVALID_REPORT', 'Check the report category, description, coordinates and submission time.');
   return parsed.data;
 }
+
+
+

@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { Bell, BellRing, Check, Settings2 } from 'lucide-react';
 import type { Alert, NotificationPreferences } from '../../shared/contracts.js';
 import { PageIntro, Panel, StatusBadge, ErrorBanner } from '../app/components.js';
 import { api, ApiClientError, isNativePlatform } from '../services/api.js';
 import { requestNotificationPermission } from '../services/notifications.js';
 
-const defaults: NotificationPreferences = { heavyRain: false, highRisk: false, environmental: false, communitySystem: false };
+const defaults: NotificationPreferences = { heavyRain: false, highRisk: false, environmental: false, communitySystem: false, officialWarnings: false };
 const localOptInKey = 'aifews.pref.notificationsEnabled';
 
 export function NotificationsPage() {
@@ -58,7 +58,8 @@ export function NotificationsPage() {
     { key: 'highRisk', label: 'High-risk screening', detail: 'Persisted high or very-high heuristic assessments.' },
     { key: 'environmental', label: 'Environmental alerts', detail: 'Alert types returned by the server model.' },
     { key: 'communitySystem', label: 'Community/system notices', detail: 'No community or moderation push-notice delivery is configured.' },
-  ];
+    { key: 'officialWarnings', label: 'Official warnings', detail: 'Configured official-source warnings, clearly separated from AI-derived alerts.' },
+ ];
 
   return <>
     <PageIntro eyebrow="PREFERENCES / USER CONTROL" title="Notifications" description="Device permission and server-side alert preferences are separate choices. No permission prompt runs on page load, and no background push service is configured." />
@@ -83,3 +84,8 @@ export function NotificationsPage() {
     </Panel>
   </>;
 }
+
+
+
+
+

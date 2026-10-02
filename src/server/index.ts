@@ -15,6 +15,7 @@ const readiness: ReadinessState = {
   databaseReady: false,
   migrationsReady: false,
 };
+let monitoringService: { start: () => void; stop: () => void } | undefined;
 const app = await createApp({ repository, getReadiness: () => ({ ...readiness }) });
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.info(JSON.stringify({ event: 'http_listening', port: PORT }));
@@ -30,6 +31,11 @@ async function initializeDatabase(): Promise<void> {
     readiness.migrationsReady = true;
     await repository.ping();
     readiness.databaseReady = true;
+    if (repository && !monitoringService) {
+      const { MonitoringService } = await import('./services/monitoring.js');
+      monitoringService = new MonitoringService(repository);
+      monitoringService.start();
+    }
     console.info(JSON.stringify({ event: 'database_ready', migrationsApplied: applied.length }));
   } catch (error) {
     const code = error instanceof ApiError
@@ -47,6 +53,7 @@ async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   console.info(JSON.stringify({ event: 'shutdown', signal }));
+  monitoringService?.stop();
   server.close(async () => {
     const vite = app.locals.vite as { close?: () => Promise<void> } | undefined;
     await vite?.close?.().catch(() => undefined);

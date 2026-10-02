@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+﻿import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   SavedLocationsResponseSchema,
   type Coordinates, type DataStatus, type EnvironmentResponse, type SavedLocation,
@@ -105,7 +105,9 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     try {
       const { preferences } = await api.notifications();
       for (const alert of fresh) {
-        const enabled = alert.type === 'HEAVY_RAIN' ? preferences.heavyRain
+        const enabled = alert.sourceKind === 'OFFICIAL' ? preferences.officialWarnings === true
+          : alert.sourceKind === 'COMMUNITY' ? preferences.communitySystem
+          : alert.type === 'HEAVY_RAIN' ? preferences.heavyRain
           : alert.type === 'HIGH_RISK' ? preferences.highRisk : preferences.environmental;
         if (enabled) await showNewAlertNotification(alert);
       }
@@ -245,3 +247,5 @@ export function useLocationData(): LocationContextValue {
   if (!value) throw new Error('useLocationData must be used inside LocationProvider.');
   return value;
 }
+
+

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+﻿import { z } from 'zod';
 
 export const DataStatusSchema = z.enum([
   'LIVE', 'RECENT', 'STALE', 'CACHED', 'UNAVAILABLE', 'CONFIGURATION REQUIRED', 'ERROR',
@@ -97,6 +97,9 @@ export const RiskAssessmentSchema = z.object({
 export type RiskAssessment = z.infer<typeof RiskAssessmentSchema>;
 
 export const AlertSeveritySchema = z.enum(['INFORMATION', 'WATCH', 'WARNING', 'HIGH']);
+export const AlertSourceKindSchema = z.enum(['OFFICIAL', 'AI_RULE', 'COMMUNITY']);
+export const AlertStatusSchema = z.enum(['ACTIVE', 'ACKNOWLEDGED', 'EXPIRED', 'RETRACTED']);
+export const AlertChangeTypeSchema = z.enum(['NEW', 'ESCALATION', 'PERSISTENCE', 'RETRACTION']);
 export const AlertSchema = z.object({
   id: z.string(),
   fingerprint: z.string(),
@@ -106,13 +109,23 @@ export const AlertSchema = z.object({
   type: z.enum(['HEAVY_RAIN', 'HIGH_RISK', 'ENVIRONMENTAL']),
   reason: z.string(),
   source: z.string(),
+  sourceKind: AlertSourceKindSchema,
+  authority: z.string().nullable(),
+  sourceUrl: z.string().nullable(),
+  externalAlertId: z.string().nullable(),
+  status: AlertStatusSchema,
+  acknowledgedAt: z.string().datetime({ offset: true }).nullable(),
+  acknowledgedBy: z.string().nullable(),
+  detectedAt: z.string().datetime({ offset: true }),
+  updatedAt: z.string().datetime({ offset: true }),
+  changeType: AlertChangeTypeSchema.nullable(),
   createdAt: z.string().datetime({ offset: true }),
   expiresAt: z.string().datetime({ offset: true }),
   dataQuality: z.string(),
   recommendedAction: z.string(),
   persisted: z.boolean(),
-  status: DataStatusSchema.optional(),
-});
+  statusLegacy: DataStatusSchema.optional(),
+}).catchall(z.any());
 export type Alert = z.infer<typeof AlertSchema>;
 
 export const EnvironmentResponseSchema = z.object({
@@ -195,9 +208,20 @@ export const TrendPointSchema = z.object({
 });
 export type TrendPoint = z.infer<typeof TrendPointSchema>;
 export const NotificationPreferencesSchema = z.object({
-  heavyRain: z.boolean(), highRisk: z.boolean(), environmental: z.boolean(), communitySystem: z.boolean(),
+  heavyRain: z.boolean(),
+  highRisk: z.boolean(),
+  environmental: z.boolean(),
+  communitySystem: z.boolean(),
+  officialWarnings: z.boolean().optional(),
 });
 export type NotificationPreferences = z.infer<typeof NotificationPreferencesSchema>;
+export const NotificationInstallationSchema = z.object({
+  installationId: z.string().trim().min(1).max(96),
+  platform: z.enum(['ANDROID', 'WEB']),
+  pushToken: z.string().trim().min(1).max(2048).nullable().optional(),
+}).strict();
+export type NotificationInstallation = z.infer<typeof NotificationInstallationSchema>;
+
 export const SimulationScenarioSchema = z.enum([
   'NORMAL', 'HEAVY RAIN', 'EXTREME RAIN', 'DRAINAGE FAILURE', 'HIGH FLOOD RISK',
 ]);
@@ -273,3 +297,5 @@ export const HealthResponseSchema = z.object({
   database: z.object({ configured: z.boolean(), ready: z.boolean() }), migrations: z.object({ ready: z.boolean() }),
 });
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
+
+

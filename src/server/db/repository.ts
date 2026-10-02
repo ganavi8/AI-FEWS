@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+﻿import { randomUUID } from 'node:crypto';
 import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import type {
   Alert, CommunityReport, EnvironmentResponse, NotificationPreferences, ReportInput,
@@ -8,9 +8,19 @@ import { ALERT_ARCHIVE_DAYS, REPORT_RETENTION_DAYS, SNAPSHOT_RETENTION_DAYS } fr
 import type { RateLimitDecision, Repository } from '../services/types.js';
 import { getPool } from './pool.js';
 
-interface SavedRow extends RowDataPacket { id: string; name: string; latitude: number | string; longitude: number | string; created_at: Date | string; updated_at: Date | string }
+interface SavedRow extends RowDataPacket {
+  id: string; owner_hash?: string; name: string; latitude: number | string; longitude: number | string;
+  created_at: Date | string; updated_at: Date | string;
+}
 interface ReportRow extends RowDataPacket { id: string; client_id: string; category: string; description: string; latitude: number | string; longitude: number | string; moderation_status: string; created_at: Date | string; updated_at: Date | string }
-interface AlertRow extends RowDataPacket { id: string; fingerprint: string; location_id: string; location_name: string; severity: Alert['severity']; event_type: Alert['type']; reason: string; source: string; data_quality: string; recommended_action: string; created_at: Date | string; expires_at: Date | string }
+interface AlertRow extends RowDataPacket {
+  id: string; fingerprint: string; location_id: string; location_name: string; severity: Alert['severity'];
+  event_type: Alert['type']; reason: string; source: string; source_kind?: Alert['sourceKind'];
+  authority?: string | null; source_url?: string | null; external_alert_id?: string | null;
+  alert_status?: Alert['status']; acknowledged_at?: Date | string | null; acknowledged_by?: string | null;
+  detected_at?: Date | string; updated_at?: Date | string; change_type?: Alert['changeType'];
+  data_quality: string; recommended_action: string; created_at: Date | string; expires_at: Date | string;
+}
 interface TrendRow extends RowDataPacket { captured_at: Date | string; payload: string | Record<string, unknown>; provider: string }
 interface CountRow extends RowDataPacket { hit_count: number }
 interface ThrottleRow extends RowDataPacket { last_requested_at: string | null }
@@ -66,6 +76,16 @@ function alertFromRow(row: AlertRow): Alert {
     type: row.event_type,
     reason: row.reason,
     source: row.source,
+    sourceKind: (row.source_kind ?? 'AI_RULE') as Alert['sourceKind'],
+    authority: row.authority ?? null,
+    sourceUrl: row.source_url ?? null,
+    externalAlertId: row.external_alert_id ?? null,
+    status: (row.alert_status ?? 'ACTIVE') as Alert['status'],
+    acknowledgedAt: row.acknowledged_at ? iso(row.acknowledged_at) : null,
+    acknowledgedBy: row.acknowledged_by ?? null,
+    detectedAt: row.detected_at ? iso(row.detected_at) : iso(row.created_at),
+    updatedAt: row.updated_at ? iso(row.updated_at) : iso(row.created_at),
+    changeType: row.change_type ?? null,
     createdAt: iso(row.created_at),
     expiresAt: iso(row.expires_at),
     dataQuality: row.data_quality,
@@ -79,6 +99,7 @@ const EMPTY_PREFERENCES: NotificationPreferences = {
   highRisk: false,
   environmental: false,
   communitySystem: false,
+  officialWarnings: false,
 };
 
 export class MySqlRepository implements Repository {
@@ -188,25 +209,145 @@ export class MySqlRepository implements Repository {
     }
   }
 
-  async persistAlerts(ownerHash: string, locationId: string, alerts: Alert[]): Promise<Alert[]> {
-    const inserted: Alert[] = [];
-    for (const alert of alerts) {
-      const [result] = await this.pool.execute<ResultSetHeader>(
-        `INSERT IGNORE INTO alerts
-          (id, fingerprint, owner_hash, location_id, severity, event_type, reason, source,
-           data_quality, recommended_action, created_at, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          alert.id, alert.fingerprint, ownerHash, locationId, alert.severity, alert.type,
-          alert.reason, alert.source, alert.dataQuality, alert.recommendedAction,
-          new Date(alert.createdAt), new Date(alert.expiresAt),
-        ],
-      );
-      if (result.affectedRows === 1) inserted.push({ ...alert, persisted: true });
-    }
-    return inserted;
+  async getLatestAssessment(ownerHash: string, locationId: string): Promise<EnvironmentResponse | null> {
+    const [rows] = await this.pool.execute<TrendRow[]>(
+      'SELECT payload FROM environment_snapshots WHERE owner_hash = ? AND location_id = ? ORDER BY captured_at DESC LIMIT 1',
+      [ownerHash, locationId],
+    );
+    if (!rows[0]?.payload) return null;
+    const payload = typeof rows[0].payload === 'string' ? JSON.parse(rows[0].payload) : rows[0].payload;
+    return payload as EnvironmentResponse;
   }
 
+  async persistAlerts(ownerHash: string, locationId: string, alerts: Alert[]): Promise<Alert[]> {
+    const persisted: Alert[] = [];
+
+    for (const alert of alerts) {
+      const [existingRows] = await this.pool.execute<AlertRow[]>(
+        `SELECT id, fingerprint, location_id, severity, event_type, reason, source,
+                source_kind, authority, source_url, external_alert_id, alert_status,
+                acknowledged_at, acknowledged_by, detected_at, updated_at, change_type,
+                data_quality, recommended_action, created_at, expires_at,
+                NULL AS location_name
+         FROM alerts
+         WHERE owner_hash = ? AND fingerprint = ?
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [ownerHash, alert.fingerprint],
+      );
+
+      const existing = existingRows[0];
+
+      if (
+        existing &&
+        (existing.alert_status === 'ACTIVE' || existing.alert_status === 'ACKNOWLEDGED')
+      ) {
+        const nextStatus = existing.alert_status === 'ACKNOWLEDGED'
+          ? 'ACKNOWLEDGED'
+          : (alert.status ?? 'ACTIVE');
+
+        await this.pool.execute(
+          `UPDATE alerts
+           SET severity = ?,
+               event_type = ?,
+               reason = ?,
+               source = ?,
+               source_kind = ?,
+               authority = ?,
+               source_url = ?,
+               external_alert_id = ?,
+               alert_status = ?,
+               acknowledged_at = ?,
+               acknowledged_by = ?,
+               detected_at = ?,
+               updated_at = ?,
+               change_type = ?,
+               data_quality = ?,
+               recommended_action = ?,
+               expires_at = ?
+           WHERE id = ? AND owner_hash = ?`,
+          [
+            alert.severity,
+            alert.type,
+            alert.reason,
+            alert.source,
+            alert.sourceKind ?? 'AI_RULE',
+            alert.authority ?? null,
+            alert.sourceUrl ?? null,
+            alert.externalAlertId ?? null,
+            nextStatus,
+            existing.acknowledged_at ? new Date(existing.acknowledged_at) : null,
+            existing.acknowledged_by ?? null,
+            new Date(alert.detectedAt ?? alert.createdAt),
+            new Date(alert.updatedAt ?? alert.createdAt),
+            alert.changeType ?? null,
+            alert.dataQuality,
+            alert.recommendedAction,
+            new Date(alert.expiresAt),
+            existing.id,
+            ownerHash,
+          ],
+        );
+
+        persisted.push({
+          ...alert,
+          id: existing.id,
+          persisted: true,
+          sourceKind: alert.sourceKind ?? 'AI_RULE',
+          status: nextStatus,
+          acknowledgedAt: existing.acknowledged_at
+            ? iso(existing.acknowledged_at)
+            : null,
+          acknowledgedBy: existing.acknowledged_by ?? null,
+        });
+        continue;
+      }
+
+      const [result] = await this.pool.execute<ResultSetHeader>(
+        `INSERT INTO alerts
+          (id, fingerprint, owner_hash, location_id, severity, event_type, reason, source,
+           source_kind, authority, source_url, external_alert_id, alert_status, acknowledged_at,
+           acknowledged_by, detected_at, updated_at, change_type, data_quality,
+           recommended_action, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          alert.id,
+          alert.fingerprint,
+          ownerHash,
+          locationId,
+          alert.severity,
+          alert.type,
+          alert.reason,
+          alert.source,
+          alert.sourceKind ?? 'AI_RULE',
+          alert.authority ?? null,
+          alert.sourceUrl ?? null,
+          alert.externalAlertId ?? null,
+          alert.status ?? 'ACTIVE',
+          alert.acknowledgedAt ? new Date(alert.acknowledgedAt) : null,
+          alert.acknowledgedBy ?? null,
+          new Date(alert.detectedAt ?? alert.createdAt),
+          new Date(alert.updatedAt ?? alert.createdAt),
+          alert.changeType ?? null,
+          alert.dataQuality,
+          alert.recommendedAction,
+          new Date(alert.createdAt),
+          new Date(alert.expiresAt),
+        ],
+      );
+
+      if (result.affectedRows === 1) {
+        persisted.push({
+          ...alert,
+          persisted: true,
+          sourceKind: alert.sourceKind ?? 'AI_RULE',
+          status: alert.status ?? 'ACTIVE',
+        });
+      }
+    }
+
+    return persisted;
+  }
   async listTrends(ownerHash: string, locationId: string, limit: number): Promise<TrendPoint[]> {
     const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(Math.trunc(limit), 500)) : 500;
     const [rows] = await this.pool.execute<TrendRow[]>(
@@ -235,24 +376,176 @@ export class MySqlRepository implements Repository {
     });
   }
 
-  async listAlerts(ownerHash: string, limit: number): Promise<Alert[]> {
+  async getLatestActiveAlert(ownerHash: string, locationId: string, type: Alert['type']): Promise<Alert | null> {
+    const [rows] = await this.pool.execute<AlertRow[]>(
+      `SELECT id, fingerprint, location_id, severity, event_type, reason, source,
+              source_kind, authority, source_url, external_alert_id, alert_status,
+              acknowledged_at, acknowledged_by, detected_at, updated_at, change_type,
+              data_quality, recommended_action, created_at, expires_at,
+              NULL AS location_name
+       FROM alerts
+       WHERE owner_hash = ?
+         AND location_id = ?
+         AND event_type = ?
+         AND alert_status IN ('ACTIVE', 'ACKNOWLEDGED')
+           AND expires_at >= UTC_TIMESTAMP(3)
+         ORDER BY updated_at DESC
+       LIMIT 1`,
+      [ownerHash, locationId, type],
+    );
+
+    return rows[0] ? alertFromRow(rows[0]) : null;
+  }
+  async getLatestOfficialAlert(
+    ownerHash: string,
+    locationId: string,
+    externalAlertId: string,
+  ): Promise<Alert | null> {
+    const [rows] = await this.pool.execute<AlertRow[]>(
+      `SELECT a.id, a.fingerprint, a.location_id, s.name AS location_name,
+              a.severity, a.event_type, a.reason, a.source, a.source_kind,
+              a.authority, a.source_url, a.external_alert_id, a.alert_status,
+              a.acknowledged_at, a.acknowledged_by, a.detected_at,
+              a.updated_at, a.change_type, a.data_quality,
+              a.recommended_action,
+              DATE_FORMAT(a.created_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS created_at,
+              DATE_FORMAT(a.expires_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS expires_at
+       FROM alerts a
+       JOIN saved_locations s ON s.id = a.location_id
+       WHERE a.owner_hash = ?
+         AND a.location_id = ?
+         AND a.source_kind = 'OFFICIAL'
+         AND a.external_alert_id = ?
+       ORDER BY a.updated_at DESC, a.created_at DESC
+       LIMIT 1`,
+      [ownerHash, locationId, externalAlertId],
+    );
+
+    return rows[0] ? alertFromRow(rows[0]) : null;
+  }
+  async listActiveAlerts(ownerHash: string, limit = 100): Promise<Alert[]> {
     const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(Math.trunc(limit), 100)) : 100;
     await this.pool.execute(
-      `DELETE FROM alerts WHERE owner_hash = ? AND expires_at < DATE_SUB(UTC_TIMESTAMP(3), INTERVAL ? DAY)`,
+      `DELETE FROM alerts WHERE owner_hash = ? AND alert_status = 'EXPIRED' AND expires_at < DATE_SUB(UTC_TIMESTAMP(3), INTERVAL ? DAY)`,
       [ownerHash, ALERT_ARCHIVE_DAYS],
     );
     const [rows] = await this.pool.execute<AlertRow[]>(
       `SELECT a.id, a.fingerprint, a.location_id, s.name AS location_name,
-              a.severity, a.event_type, a.reason, a.source, a.data_quality,
-              a.recommended_action,
+              a.severity, a.event_type, a.reason, a.source, a.source_kind, a.authority,
+              a.source_url, a.external_alert_id, a.alert_status, a.acknowledged_at,
+              a.acknowledged_by, a.detected_at, a.updated_at, a.change_type,
+              a.data_quality, a.recommended_action,
               DATE_FORMAT(a.created_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS created_at,
               DATE_FORMAT(a.expires_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS expires_at
        FROM alerts a JOIN saved_locations s ON s.id = a.location_id
-       WHERE a.owner_hash = ? AND a.expires_at > UTC_TIMESTAMP(3)
+       WHERE a.owner_hash = ? AND a.alert_status IN ('ACTIVE', 'ACKNOWLEDGED')
        ORDER BY a.created_at DESC LIMIT ${safeLimit}`,
       [ownerHash],
     );
     return rows.map(alertFromRow);
+  }
+
+  async listAlertHistory(ownerHash: string, limit = 200): Promise<Alert[]> {
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(Math.trunc(limit), 500)) : 200;
+    const [rows] = await this.pool.execute<AlertRow[]>(
+      `SELECT a.id, a.fingerprint, a.location_id, s.name AS location_name,
+              a.severity, a.event_type, a.reason, a.source, a.source_kind, a.authority,
+              a.source_url, a.external_alert_id, a.alert_status, a.acknowledged_at,
+              a.acknowledged_by, a.detected_at, a.updated_at, a.change_type,
+              a.data_quality, a.recommended_action,
+              DATE_FORMAT(a.created_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS created_at,
+              DATE_FORMAT(a.expires_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS expires_at
+       FROM alerts a JOIN saved_locations s ON s.id = a.location_id
+       WHERE a.owner_hash = ?
+       ORDER BY a.updated_at DESC, a.created_at DESC LIMIT ${safeLimit}`,
+      [ownerHash],
+    );
+    return rows.map(alertFromRow);
+  }
+
+  async listAlerts(ownerHash: string, limit: number): Promise<Alert[]> {
+    return this.listActiveAlerts(ownerHash, limit);
+  }
+
+  async listMonitorLocations(limit: number): Promise<Array<{ id: string; ownerHash: string; name: string; latitude: number; longitude: number }>> {
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(Math.trunc(limit), 250)) : 50;
+    const [rows] = await this.pool.execute<SavedRow[]>(
+      `SELECT id, owner_hash, name, latitude, longitude
+       FROM saved_locations
+       ORDER BY created_at DESC LIMIT ${safeLimit}`,
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      ownerHash: row.owner_hash ?? '',
+      name: row.name,
+      latitude: Number(row.latitude),
+      longitude: Number(row.longitude),
+    }));
+  }
+
+  async acknowledgeAlert(ownerHash: string, alertId: string): Promise<Alert | null> {
+    const [result] = await this.pool.execute<ResultSetHeader>(
+      `UPDATE alerts SET alert_status = 'ACKNOWLEDGED', acknowledged_at = UTC_TIMESTAMP(3),
+         acknowledged_by = ?, updated_at = UTC_TIMESTAMP(3)
+       WHERE id = ? AND owner_hash = ? AND alert_status IN ('ACTIVE', 'ACKNOWLEDGED')`,
+      [ownerHash, alertId, ownerHash],
+    );
+    if (result.affectedRows === 0) return null;
+    const [rows] = await this.pool.execute<AlertRow[]>(
+      `SELECT a.id, a.fingerprint, a.location_id, s.name AS location_name,
+              a.severity, a.event_type, a.reason, a.source, a.source_kind, a.authority,
+              a.source_url, a.external_alert_id, a.alert_status, a.acknowledged_at,
+              a.acknowledged_by, a.detected_at, a.updated_at, a.change_type,
+              a.data_quality, a.recommended_action,
+              DATE_FORMAT(a.created_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS created_at,
+              DATE_FORMAT(a.expires_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS expires_at
+       FROM alerts a JOIN saved_locations s ON s.id = a.location_id
+       WHERE a.id = ? AND a.owner_hash = ? LIMIT 1`,
+      [alertId, ownerHash],
+    );
+    return rows[0] ? alertFromRow(rows[0]) : null;
+  }
+
+  async expireAlerts(ownerHash?: string, locationId?: string): Promise<number> {
+    const updates: string[] = [];
+    const values: Array<string | number | null> = [];
+    if (ownerHash) {
+      updates.push('owner_hash = ?');
+      values.push(ownerHash);
+    }
+    if (locationId) {
+      updates.push('location_id = ?');
+      values.push(locationId);
+    }
+    const clauses = updates.length ? `WHERE ${updates.join(' AND ')}` : '';
+    const [result] = await this.pool.execute<ResultSetHeader>(
+      `UPDATE alerts SET alert_status = 'EXPIRED', updated_at = UTC_TIMESTAMP(3)
+       ${clauses}${clauses ? " AND " : ""}alert_status IN ('ACTIVE','ACKNOWLEDGED') AND expires_at < UTC_TIMESTAMP(3)`,
+      values,
+    );
+    return result.affectedRows;
+  }
+
+  async retractAlert(ownerHash: string, alertId: string, reason?: string): Promise<Alert | null> {
+    const [result] = await this.pool.execute<ResultSetHeader>(
+      `UPDATE alerts SET alert_status = 'RETRACTED', updated_at = UTC_TIMESTAMP(3), change_type = 'RETRACTION', reason = COALESCE(?, reason)
+       WHERE id = ? AND owner_hash = ?`,
+      [reason ?? null, alertId, ownerHash],
+    );
+    if (result.affectedRows === 0) return null;
+    const [rows] = await this.pool.execute<AlertRow[]>(
+      `SELECT a.id, a.fingerprint, a.location_id, s.name AS location_name,
+              a.severity, a.event_type, a.reason, a.source, a.source_kind, a.authority,
+              a.source_url, a.external_alert_id, a.alert_status, a.acknowledged_at,
+              a.acknowledged_by, a.detected_at, a.updated_at, a.change_type,
+              a.data_quality, a.recommended_action,
+              DATE_FORMAT(a.created_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS created_at,
+              DATE_FORMAT(a.expires_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS expires_at
+       FROM alerts a JOIN saved_locations s ON s.id = a.location_id
+       WHERE a.id = ? AND a.owner_hash = ? LIMIT 1`,
+      [alertId, ownerHash],
+    );
+    return rows[0] ? alertFromRow(rows[0]) : null;
   }
 
   async listCommunityReports(latitude: number, longitude: number, radiusKm: number): Promise<CommunityReport[]> {
@@ -393,27 +686,97 @@ export class MySqlRepository implements Repository {
     return result.affectedRows > 0;
   }
 
+  async registerNotificationInstallation(
+    ownerHash: string,
+    installationId: string,
+    platform: 'ANDROID' | 'WEB',
+    pushToken?: string | null,
+  ): Promise<void> {
+    const [existingRows] = await this.pool.execute<RowDataPacket[]>(
+      `SELECT owner_hash
+       FROM notification_installations
+       WHERE installation_id = ?
+       LIMIT 1`,
+      [installationId],
+    );
+
+    const existing = existingRows[0];
+    if (existing && existing.owner_hash !== ownerHash) {
+      throw new Error('NOTIFICATION_INSTALLATION_OWNER_MISMATCH');
+    }
+
+    const now = new Date();
+
+    await this.pool.execute(
+      `INSERT INTO notification_installations
+        (installation_id, owner_hash, platform, push_token, enabled, created_at, updated_at, last_seen_at)
+       VALUES (?, ?, ?, ?, 1, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         platform = VALUES(platform),
+         push_token = VALUES(push_token),
+         enabled = 1,
+         updated_at = VALUES(updated_at),
+         last_seen_at = VALUES(last_seen_at)`,
+      [installationId, ownerHash, platform, pushToken ?? null, now, now, now],
+    );
+  }
+
+  async unregisterNotificationInstallation(
+    ownerHash: string,
+    installationId: string,
+  ): Promise<boolean> {
+    const [result] = await this.pool.execute<ResultSetHeader>(
+      `UPDATE notification_installations
+       SET enabled = 0,
+           updated_at = UTC_TIMESTAMP(3),
+           last_seen_at = UTC_TIMESTAMP(3)
+       WHERE installation_id = ? AND owner_hash = ?`,
+      [installationId, ownerHash],
+    );
+
+    return result.affectedRows > 0;
+  }
   async getNotificationPreferences(ownerHash: string): Promise<NotificationPreferences> {
-    const [rows] = await this.pool.execute<(RowDataPacket & { heavy_rain: number; high_risk: number; environmental: number; community_system: number })[]>(
-      'SELECT heavy_rain, high_risk, environmental, community_system FROM notification_preferences WHERE owner_hash = ? LIMIT 1',
+    const [rows] = await this.pool.execute<(RowDataPacket & {
+      heavy_rain: number; high_risk: number; environmental: number; community_system: number; official_warnings?: number;
+    })[]>(
+      'SELECT heavy_rain, high_risk, environmental, community_system, official_warnings FROM notification_preferences WHERE owner_hash = ? LIMIT 1',
       [ownerHash],
     );
     const row = rows[0];
     if (!row) return { ...EMPTY_PREFERENCES };
     return {
-      heavyRain: Boolean(row.heavy_rain), highRisk: Boolean(row.high_risk),
-      environmental: Boolean(row.environmental), communitySystem: Boolean(row.community_system),
+      heavyRain: Boolean(row.heavy_rain),
+      highRisk: Boolean(row.high_risk),
+      environmental: Boolean(row.environmental),
+      communitySystem: Boolean(row.community_system),
+      officialWarnings: row.official_warnings === undefined ? false : Boolean(row.official_warnings),
     };
   }
 
   async setNotificationPreferences(ownerHash: string, preferences: NotificationPreferences): Promise<NotificationPreferences> {
+    const officialWarnings = Boolean(preferences.officialWarnings ?? false);
     await this.pool.execute(
-      `INSERT INTO notification_preferences (owner_hash, heavy_rain, high_risk, environmental, community_system, updated_at)
-       VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP(3))
+      `INSERT INTO notification_preferences (owner_hash, heavy_rain, high_risk, environmental, community_system, official_warnings, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(3))
        ON DUPLICATE KEY UPDATE heavy_rain = VALUES(heavy_rain), high_risk = VALUES(high_risk),
-        environmental = VALUES(environmental), community_system = VALUES(community_system), updated_at = UTC_TIMESTAMP(3)`,
-      [ownerHash, Number(preferences.heavyRain), Number(preferences.highRisk), Number(preferences.environmental), Number(preferences.communitySystem)],
+        environmental = VALUES(environmental), community_system = VALUES(community_system),
+        official_warnings = VALUES(official_warnings), updated_at = UTC_TIMESTAMP(3)`,
+      [ownerHash, Number(preferences.heavyRain), Number(preferences.highRisk), Number(preferences.environmental), Number(preferences.communitySystem), Number(officialWarnings)],
     );
-    return preferences;
+    return { ...preferences, officialWarnings };
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+

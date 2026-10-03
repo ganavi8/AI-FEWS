@@ -1,8 +1,9 @@
-﻿import { getWeather, getAirQuality } from '../providers/open-meteo.js';
+import { getWeather, getAirQuality } from '../providers/open-meteo.js';
 import { getOfficialWarningProviders } from '../providers/official/index.js';
 import { officialAlertToAlert } from '../providers/official/adapter.js';
 import { deriveAlerts } from '../alerts/engine.js';
 import { getEnvironment } from './environment.js';
+import { deliverAlertPush } from './notification-delivery.js';
 import type { Repository } from './types.js';
 
 export const DEFAULT_MONITOR_INTERVAL_MS = 5 * 60 * 1000;
@@ -161,6 +162,19 @@ export class MonitoringService {
               )
             : [];
 
+          for (const alert of persisted) {
+            try {
+              await deliverAlertPush(this.repository, location.ownerHash, alert);
+            } catch (error) {
+              console.error(JSON.stringify({
+                event: 'alert_push_delivery_failed',
+                alertId: alert.id,
+                locationId: location.id,
+                code: error instanceof Error ? error.name : 'UNKNOWN',
+              }));
+            }
+          }
+
           await this.repository.expireAlerts(location.ownerHash, location.id);
           console.info(JSON.stringify({
             event: 'monitor_location_evaluated',
@@ -201,6 +215,8 @@ export class MonitoringService {
     }
   }
 }
+
+
 
 
 

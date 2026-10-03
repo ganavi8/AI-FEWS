@@ -50,6 +50,11 @@ export interface Repository {
   renameSavedLocation(ownerHash: string, locationId: string, name: string): Promise<SavedLocation | null>;
   deleteSavedLocation(ownerHash: string, locationId: string): Promise<boolean>;
   getNotificationPreferences(ownerHash: string): Promise<NotificationPreferences>;
+  listNotificationInstallations(ownerHash: string): Promise<Array<{
+    installationId: string;
+    platform: 'ANDROID' | 'WEB';
+    pushToken: string;
+  }>>;
   registerNotificationInstallation(ownerHash: string, installationId: string, platform: 'ANDROID' | 'WEB', pushToken?: string | null): Promise<void>;
   unregisterNotificationInstallation(ownerHash: string, installationId: string): Promise<boolean>;
   setNotificationPreferences(ownerHash: string, preferences: NotificationPreferences): Promise<NotificationPreferences>;
@@ -72,6 +77,7 @@ export interface SimulationResponse {
   risk: RiskAssessment;
   disclaimer: string;
 }
+
 
 
 

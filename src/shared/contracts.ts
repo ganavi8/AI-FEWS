@@ -1,4 +1,4 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 
 export const DataStatusSchema = z.enum([
   'LIVE', 'RECENT', 'STALE', 'CACHED', 'UNAVAILABLE', 'CONFIGURATION REQUIRED', 'ERROR',
@@ -258,7 +258,7 @@ export const SavedLocationResponseSchema = z.object({ location: SavedLocationSch
 export const AlertsResponseSchema = z.object({ alerts: z.array(AlertSchema) });
 export const NotificationsResponseSchema = z.object({
   alerts: z.array(AlertSchema), preferences: NotificationPreferencesSchema,
-  delivery: z.literal('IN_APP_ON_REFRESH'), pushConfigured: z.boolean(),
+  delivery: z.enum(['IN_APP_ON_REFRESH', 'FCM_PUSH']), pushConfigured: z.boolean(),
 });
 export const TrendsResponseSchema = z.object({
   locationId: z.string().uuid(), points: z.array(TrendPointSchema), retentionDays: z.number().int(), source: z.string(), note: z.string(),
@@ -273,7 +273,7 @@ export const ModelsResponseSchema = z.object({ models: z.array(z.object({
   inputs: z.array(z.string()), outputLevels: z.array(z.string()), limitation: z.string(), source: z.string(),
 })) });
 export const PublicConfigResponseSchema = z.object({
-  application: z.literal('AI·FEWS'),
+  application: z.literal('AI-FEWS'),
   operatorConfigured: z.boolean(), operatorLegalName: z.string(), operatorServiceAddress: z.string(),
   supportConfigured: z.boolean(), supportContact: z.string(),
 });
@@ -297,5 +297,7 @@ export const HealthResponseSchema = z.object({
   database: z.object({ configured: z.boolean(), ready: z.boolean() }), migrations: z.object({ ready: z.boolean() }),
 });
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
+
+
 
 

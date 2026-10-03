@@ -83,7 +83,7 @@ describe('AI·FEWS API integration', () => {
     const response = await request(app).get('/api/public-config').expect(200);
     expect(response.headers['cache-control']).toBe('no-store');
     expect(PublicConfigResponseSchema.parse(response.body)).toMatchObject({
-      application: 'AI·FEWS', operatorConfigured: false,
+      application: 'AI-FEWS',
       operatorLegalName: 'NOT CONFIGURED', operatorServiceAddress: 'NOT CONFIGURED',
       supportConfigured: false, supportContact: 'NOT CONFIGURED',
     });
@@ -214,3 +214,4 @@ describe('AI·FEWS API integration', () => {
     await request(app).options('/api/health').set('Origin', 'https://untrusted.example').expect(403);
   });
 });
+

@@ -156,8 +156,8 @@ export const api = {
   registerNotificationInstallation: (value: NotificationInstallation) =>
     post('/api/notifications/installations', NotificationInstallationSchema.parse(value), z.object({}).passthrough()),
   unregisterNotificationInstallation: (installationId: string) =>
-    request('DELETE', `/api/notifications/installations/`, z.object({}).passthrough()),
-  setNotificationPreferences: (value: NotificationPreferences) => put('/api/notifications/preferences', NotificationPreferencesSchema.parse(value), z.object({ preferences: NotificationPreferencesSchema, delivery: z.literal('IN_APP_ON_REFRESH'), pushConfigured: z.boolean() })),
+    request("DELETE", "/api/notifications/installations/" + encodeURIComponent(installationId), z.object({}).passthrough()),
+  setNotificationPreferences: (value: NotificationPreferences) => put('/api/notifications/preferences', NotificationPreferencesSchema.parse(value), z.object({ preferences: NotificationPreferencesSchema, delivery: z.enum(['IN_APP_ON_REFRESH', 'FCM_PUSH']), pushConfigured: z.boolean() })),
   communityReports: (latitude: number, longitude: number, radiusKm = 10) => get(`/api/community-reports?${qs({ latitude, longitude, radiusKm })}`, CommunityReportsResponseSchema),
   syncReports: (reports: ReportInput[]) => post('/api/sync', { reports }, SyncResponseSchema),
   submitReport: (report: ReportInput) => post('/api/community-reports', ReportInputSchema.parse(report), z.object({ report: CommunityReportSchema, message: z.string() })),
@@ -175,6 +175,10 @@ export function validateLocalReport(value: unknown): ReportInput {
   if (!parsed.success) throw new ApiClientError('INVALID_REPORT', 'Check the report category, description, coordinates and submission time.');
   return parsed.data;
 }
+
+
+
+
 
 
 

@@ -17,3 +17,8 @@ android/captures/
 android/keystore.properties
 *.jks
 *.keystore
+
+# Firebase credentials and configuration
+ai-fews-84055-firebase-adminsdk-*.json
+google-services.json
+android/app/google-services.json

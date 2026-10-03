@@ -1,4 +1,4 @@
-﻿import { randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import type {
   Alert, CommunityReport, EnvironmentResponse, NotificationPreferences, ReportInput,
@@ -735,6 +735,33 @@ export class MySqlRepository implements Repository {
     );
 
     return result.affectedRows > 0;
+  }
+  async listNotificationInstallations(ownerHash: string): Promise<Array<{
+    installationId: string;
+    platform: 'ANDROID' | 'WEB';
+    pushToken: string;
+  }>> {
+    const [rows] = await this.pool.execute<(RowDataPacket & {
+      installation_id: string;
+      platform: 'ANDROID' | 'WEB';
+      push_token: string | null;
+    })[]>(
+      `SELECT installation_id, platform, push_token
+       FROM notification_installations
+       WHERE owner_hash = ?
+         AND enabled = 1
+         AND push_token IS NOT NULL
+         AND push_token <> ''`,
+      [ownerHash],
+    );
+
+    return rows
+      .filter((row) => Boolean(row.push_token))
+      .map((row) => ({
+        installationId: row.installation_id,
+        platform: row.platform,
+        pushToken: row.push_token as string,
+      }));
   }
   async getNotificationPreferences(ownerHash: string): Promise<NotificationPreferences> {
     const [rows] = await this.pool.execute<(RowDataPacket & {

@@ -34,7 +34,7 @@ export function dataRouter(context: RouteContext): Router {
     const operatorServiceAddress = publicText(context.operatorServiceAddress, 8);
     const supportContact = publicContact(context.supportContact);
     return response.json({
-      application: 'AI·FEWS',
+      application: 'AI-FEWS',
       operatorConfigured: Boolean(operatorLegalName && operatorServiceAddress),
       operatorLegalName: operatorLegalName ?? 'NOT CONFIGURED',
       operatorServiceAddress: operatorServiceAddress ?? 'NOT CONFIGURED',

@@ -1,4 +1,5 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
+import { isPushConfigured } from '../services/push.js';
 import { z } from 'zod';
 import { NotificationInstallationSchema, NotificationPreferencesSchema, SavedLocationInputSchema } from '../../shared/contracts.js';
 import { ApiError } from '../errors.js';
@@ -132,18 +133,22 @@ export function accountRouter(context: RouteContext): Router {
     const ownerHash = requireOwnerHash(request);
     const alerts = repo.listActiveAlerts ? await repo.listActiveAlerts(ownerHash, 100) : await repo.listAlerts?.(ownerHash, 100) ?? [];
     const preferences = await context.repository.getNotificationPreferences(ownerHash);
-    response.json({ alerts, preferences, delivery: 'IN_APP_ON_REFRESH', pushConfigured: false });
+    response.json({ alerts, preferences, delivery: isPushConfigured() ? 'FCM_PUSH' : 'IN_APP_ON_REFRESH', pushConfigured: isPushConfigured() });
   });
 
   router.put('/notifications/preferences', writeLimit, async (request, response) => {
     const parsed = NotificationPreferencesSchema.safeParse(request.body);
     if (!parsed.success) throw new ApiError(400, 'INVALID_NOTIFICATION_PREFERENCES', 'All notification preferences must be booleans.');
     const preferences = await context.repository.setNotificationPreferences(requireOwnerHash(request), parsed.data);
-    response.json({ preferences, delivery: 'IN_APP_ON_REFRESH', pushConfigured: false });
+    response.json({ preferences, delivery: isPushConfigured() ? 'FCM_PUSH' : 'IN_APP_ON_REFRESH', pushConfigured: isPushConfigured() });
   });
 
   return router;
 }
+
+
+
+
 
 
 

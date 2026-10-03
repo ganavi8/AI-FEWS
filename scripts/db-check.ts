@@ -115,13 +115,22 @@ async function main(): Promise<void> {
       type: 'ENVIRONMENTAL',
       reason: 'Temporary verification fixture. This is not a real environmental alert.',
       source: 'Temporary MySQL persistence check',
+      sourceKind: 'AI_RULE',
+      authority: null,
+      sourceUrl: null,
+      externalAlertId: null,
+      status: 'ACTIVE',
+      changeType: 'NEW',
+      acknowledgedAt: null,
+      acknowledgedBy: null,
+      detectedAt: createdAt.toISOString(),
+      updatedAt: createdAt.toISOString(),
       createdAt: createdAt.toISOString(),
       expiresAt: new Date(createdAt.getTime() + 60 * 60 * 1000).toISOString(),
       dataQuality: 'TEST_FIXTURE_NOT_ENVIRONMENTAL_DATA',
       recommendedAction: 'No action. The temporary test record is removed after verification.',
       persisted: false,
-    };
-    currentPhase = 'alert insert';
+    };    currentPhase = 'alert insert';
     const insertedAlerts = await repository.persistAlerts(ownerHash, location.id, [verificationAlert]);
     currentPhase = 'alert independent reload';
     const alertsAfterReconnect = await independentRepository.listAlerts(ownerHash, 10);
